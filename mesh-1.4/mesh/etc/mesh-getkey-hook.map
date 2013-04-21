@@ -1,0 +1,4 @@
+#!/bin/sh
+# echo the authorized_keys file for the user given in $1 to the stream
+# given in $2
+cat "/HOME/$1/.ssh/authorized_keys" 2>/dev/null >&"$2"

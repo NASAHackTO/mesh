@@ -1,0 +1,248 @@
+#!/usr/bin/perl -T
+#
+# Copyright (C) 2006-2009 United States Government as represented by the
+# Administrator of the National Aeronautics and Space Administration
+# (NASA).  All Rights Reserved.
+#
+# This software is distributed under the NASA Open Source Agreement
+# (NOSA), version 1.3.  The NOSA has been approved by the Open Source
+# Initiative.  See http://www.opensource.org/licenses/nasa1.3.php
+# for the complete NOSA document.
+#
+# THE SUBJECT SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY WARRANTY OF ANY
+# KIND, EITHER EXPRESSED, IMPLIED, OR STATUTORY, INCLUDING, BUT NOT
+# LIMITED TO, ANY WARRANTY THAT THE SUBJECT SOFTWARE WILL CONFORM TO
+# SPECIFICATIONS, ANY IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR
+# A PARTICULAR PURPOSE, OR FREEDOM FROM INFRINGEMENT, ANY WARRANTY THAT
+# THE SUBJECT SOFTWARE WILL BE ERROR FREE, OR ANY WARRANTY THAT
+# DOCUMENTATION, IF PROVIDED, WILL CONFORM TO THE SUBJECT SOFTWARE. THIS
+# AGREEMENT DOES NOT, IN ANY MANNER, CONSTITUTE AN ENDORSEMENT BY
+# GOVERNMENT AGENCY OR ANY PRIOR RECIPIENT OF ANY RESULTS, RESULTING
+# DESIGNS, HARDWARE, SOFTWARE PRODUCTS OR ANY OTHER APPLICATIONS RESULTING
+# FROM USE OF THE SUBJECT SOFTWARE.  FURTHER, GOVERNMENT AGENCY DISCLAIMS
+# ALL WARRANTIES AND LIABILITIES REGARDING THIRD-PARTY SOFTWARE, IF
+# PRESENT IN THE ORIGINAL SOFTWARE, AND DISTRIBUTES IT "AS IS".
+#
+# RECIPIENT AGREES TO WAIVE ANY AND ALL CLAIMS AGAINST THE UNITED STATES
+# GOVERNMENT, ITS CONTRACTORS AND SUBCONTRACTORS, AS WELL AS ANY PRIOR
+# RECIPIENT.  IF RECIPIENT'S USE OF THE SUBJECT SOFTWARE RESULTS IN ANY
+# LIABILITIES, DEMANDS, DAMAGES, EXPENSES OR LOSSES ARISING FROM SUCH USE,
+# INCLUDING ANY DAMAGES FROM PRODUCTS BASED ON, OR RESULTING FROM,
+# RECIPIENT'S USE OF THE SUBJECT SOFTWARE, RECIPIENT SHALL INDEMNIFY AND
+# HOLD HARMLESS THE UNITED STATES GOVERNMENT, ITS CONTRACTORS AND
+# SUBCONTRACTORS, AS WELL AS ANY PRIOR RECIPIENT, TO THE EXTENT PERMITTED
+# BY LAW.  RECIPIENT'S SOLE REMEDY FOR ANY SUCH MATTER SHALL BE THE
+# IMMEDIATE, UNILATERAL TERMINATION OF THIS AGREEMENT.
+#
+
+# This program invalidates a specific key with a given fingerprint or
+# all keys.
+
+use strict;
+use File::Temp;
+use Getopt::Long qw(:config bundling no_ignore_case require_order);
+
+our $VERSION = 0.15;
+
+my $localhost = "PREFIX/etc/mesh/localhost";
+my $maphost = "PREFIX/etc/mesh/maphost";
+my $meshkeys = "PREFIX/var/meshkeys";
+my $musers = "PREFIX/etc/mesh/musers";
+my $saverc = "/etc/saverc";
+
+# untaint path
+$ENV{PATH} = "/bin:/usr/bin:/usr/local/bin";
+
+# parse arguments
+my %opts = ();
+my $rc = GetOptions(\%opts,
+    "all", "user=s",
+);
+die "Invalid options\n"
+    if (!$rc || scalar(@ARGV) > 1 || $opts{all} && scalar(@ARGV) == 1);
+
+# untaint user
+if ($opts{user} =~ /^([\w-.]+)$/) {
+    $opts{user} = $1;
+} elsif ($opts{user}) {
+    die "Invalid user\n";
+}
+
+my $local;
+my $map;
+my $mapport = "";
+my $useropt = $opts{user} ? "--user=$opts{user}" : "";
+if (-r $maphost) {
+    # read local host
+    if (open(FILE, "<$localhost")) {
+        local $/;
+        $local = <FILE>;
+        close FILE;
+        # local host specification must be a host name with optional port
+        if ($local =~ /([\w-]+(\.[\w-]+)*):?(\d+)?/) {
+            $local = $1;
+        } else {
+            die "Invalid localhost file\n";
+        }
+    } else {
+        die "Error opening localhost file: $!\n";
+    }
+
+    # read MAP host and port
+    if (open(FILE, "<$maphost")) {
+        local $/;
+        $map = <FILE>;
+        close FILE;
+        # MAP specification must be a host name with optional port
+        if ($map =~ /([\w-]+(\.[\w-]+)*):?(\d+)?/) {
+            $map = $1;
+            $mapport = "-p $3" if (defined $3);
+        } else {
+            die "Invalid maphost file\n";
+        }
+    } else {
+        die "Error opening maphost file: $!\n";
+    }
+}
+
+my $pubkey = "";
+if ($opts{user}) {
+    # kill key for given user if authorized
+    my $user = getpwuid($<);
+    if (open(MUSERS, $musers)) {
+        while (<MUSERS>) {
+            s/^\s+|\s+$//g;
+            # authorizations for a user begin with the user name
+            if (/^\Q$opts{user}\E\s+(.*)/) {
+                my $users = $1;
+                # invoking user must be in authorized list for given user
+                if ($users =~ /(?:^|\s)\Q$user\E(?:\s|$)/) {
+                    $pubkey = "$meshkeys/$opts{user}($user)";
+                    last;
+                }
+            }
+        }
+        close MUSERS;
+    }
+    die "Cannot kill keys for user \"$opts{user}\"\n" if (!$pubkey);
+} else {
+    $pubkey = "$meshkeys/" . (getpwuid($<))[0];
+}
+
+if ($opts{all}) {
+    if (-r $maphost && $map ne $local) {
+        # kill keys on map if not local host
+        system("ssh $mapport -axq -oBatchMode=yes $map mesh-keykill --all $useropt");
+        die "Error killing keys on $map\n" if ($?);
+    }
+
+    # truncate file
+    open(TMPKEY, ">$pubkey") or die "Error truncating public key file: $!\n";
+    close TMPKEY;
+
+    # synchronize public key
+    if (-r $saverc) {
+        system("save --sync --file '$pubkey' >/dev/null 2>/dev/null");
+    }
+
+    # indicate success
+    print "All keys killed successfully\n";
+    exit;
+}
+
+my $kill_print;
+if (scalar(@ARGV) == 0) {
+    # read key from MESH_PUBKEY
+    my $tmp = File::Temp->new;
+    print $tmp $ENV{MESH_PUBKEY};
+    close $tmp;
+    # extract fingerprint from key file
+    $kill_print = qx{ssh-keygen -l -f $tmp 2>/dev/null};
+    # fingerprint is everything between first and second space
+    $kill_print =~ s/^\S+\s+|\s+.*$//g;
+} else {
+    $kill_print = $ARGV[0];
+}
+
+# untaint kill key fingerprint
+if ($kill_print =~ /(\w\w(:\w\w)+)/) {
+    $kill_print = $1;
+} else {
+    die "Error reading key fingerprint\n";
+}
+
+# make sure temporary public key file does not exist
+unlink "$pubkey.tmp.pub";
+
+my $found = 0;
+if (open(KEY, "<$pubkey")) {
+    if (open(TMPKEY, ">$pubkey.tmp.pub")) {
+        while (my $key = <KEY>) {
+            # get key fingerprint
+            my $tmp = File::Temp->new;
+            print $tmp $key;
+            close $tmp;
+            # extract fingerprint from key file
+            my $print = qx{ssh-keygen -l -f $tmp 2>/dev/null};
+            # fingerprint is everything between first and second space
+            $print =~ s/^\S+\s+|\s+.*$//g;
+            if ($print eq $kill_print) {
+                $found = 1;
+            } else {
+                print TMPKEY $key;
+            }
+        }
+        close TMPKEY;
+    } else {
+        close KEY;
+        die "Error opening temporary key file: $!\n";
+    }
+    close KEY;
+
+    # make sure temporary public key file is world readable
+    chmod(0644, "$pubkey.tmp.pub");
+
+    # rename temporary public key file to final name
+    rename("$pubkey.tmp.pub", $pubkey);
+    # synchronize public key
+    if (-r $saverc) {
+        system("save --sync --file '$pubkey' >/dev/null 2>/dev/null");
+    }
+}
+
+if ($found && -r $maphost && $map ne $local) {
+    # kill key on MAP
+    system("ssh $mapport -axq -oBatchMode=yes $map mesh-keykill $useropt $kill_print");
+    die "Error killing key on $map\n" if ($?);
+}
+
+if (!$found && !$opts{user} && scalar(@ARGV) == 0) {
+    # key must reside in multi-user key file for invoking user
+    my $user = getpwuid($<);
+    if (open(MUSERS, $musers)) {
+        while (<MUSERS>) {
+            s/^\s+|\s+$//g;
+            # authorizations for a user begin with the user name
+            if (/^\Q$user\E\s+/) {
+                my $pubkey_kill = "$meshkeys/$user.kill";
+                if (open(KILL, ">>$pubkey_kill")) {
+                    $found = 1;
+                    print KILL "$kill_print\n";
+                    close KILL;
+                } else {
+                    die "Error opening kill file: $!\n";
+                }
+                last;
+            }
+        }
+        close MUSERS;
+    }
+}
+
+# indicate success or failure
+if ($found) {
+    print "Key $kill_print killed successfully\n";
+} else {
+    print "Unable to find key $kill_print\n";
+}
+

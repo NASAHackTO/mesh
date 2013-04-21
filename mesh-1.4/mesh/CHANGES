@@ -1,0 +1,31 @@
+CHANGES
+=======
+
+* Mesh 1.4 (09/06/12)
+    - Added change log
+    - Added ability to replace entire command line in mashrc
+    - Added ability to insert arguments in mashrc
+    - Added ability for one user to generate keys for multiple users
+    - Added ability to specify connection rules by src/dst host name
+    - Added support for relative directory *at() system calls in agent
+    - Added support for numeric users and groups in mash allow/deny statements
+    - Added additional comments to source code
+    - Added ssh cipher and mac optimizations in client
+    - Added documentation for configuring inter-VO single sign-on
+    - Changed magic prefix to scp-style paths in client VFS
+    - Changed mesh-keygen time specifications to consolidated format
+    - Fixed improper return value in mash
+    - Fixed extended rule parsing in mess
+    - Fixed name_regex parsing of commands in mashrc
+    - Fixed interference in rule processing due to improperly cloned hashes
+    - Fixed interference in rule processing due to shared hash iterators
+    - Fixed removal of temporary files in client VFS
+    - Fixed removal of linked file instead of link in client VFS
+    - Fixed grep in client VFS when used with stdin and PWD is remote directory
+    - Fixed use of -u with client VFS
+    - Fixed various warning messages in agent compilation
+    - Fixed test of writability to home directory in mess w() "macro"
+    - Fixed 4096 byte size limitation in meshrc
+    - Fixed improper merging of parser and policy restrictions in mashrc
+    - Fixed improper write authorization enforcement of file names that
+      contain the name of an authorized directory in agent

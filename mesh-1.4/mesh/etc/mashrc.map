@@ -1,0 +1,155 @@
+<mashrc>
+    <syslog/>
+    <parsers>
+        <mesh-keygen>
+            <argument>
+                <count>1</count>
+            </argument>
+            <getopt>init,init-add,read,time=s,user=s</getopt>
+        </mesh-keygen>
+        <mesh-keykill>
+            <argument>
+                <count op="le">2</count>
+            </argument>
+            <getopt>all,user=s</getopt>
+        </mesh-keykill>
+        <mesh-setmp>
+            <getopt>away=s,home=s,homemap=s,local</getopt>
+        </mesh-setmp>
+        <save.alert>
+            <argument>
+                <count op="le">2</count>
+            </argument>
+            <getopt>u,O,T,l=i,g=s,h=s,s=s,t=s</getopt>
+        </save.alert>
+        <scp>
+            <getopt>dfpqrtv</getopt>
+            <argument>
+                <count op="ge">2</count>
+            </argument>
+            <option>
+                <regex>^(?=.*(^|\n)[ft])</regex>
+                <regex>^(?!.*[ft].*[ft])</regex>
+            </option>
+        </scp>
+    </parsers>
+    <policies>
+        <default>
+            <group>
+                <deny>
+                    <MESHGROUP/>
+                </deny>
+            </group>
+            <proxies>
+                <none>
+                    <connection>
+                        <src_ip>MPIP</src_ip>
+                    </connection>
+                    <environment>
+                        <set name="MESH_PUBKEY"/>
+                    </environment>
+                    <commands>
+                        <mesh-keygen>
+                            <directory>PREFIX/bin</directory>
+                            <option>
+                                <set name="read"/>
+                                <unset name="init"/>
+                                <unset name="init-add"/>
+                                <unset name="time"/>
+                                <unset name="user"/>
+                            </option>
+                        </mesh-keygen>
+                        <mesh-keykill>
+                            <directory>PREFIX/bin</directory>
+                            <option>
+                                <unset name="user"/>
+                            </option>
+                        </mesh-keykill>
+                        <mesh-setmp>
+                            <directory>PREFIX/bin</directory>
+                            <option>
+                                <set name="homemap"/>
+                                <set name="local"/>
+                            </option>
+                        </mesh-setmp>
+                    </commands>
+                </none>
+                <none>
+                    <environment>
+                        <unset name="MESH_PUBKEY"/>
+                    </environment>
+                    <commands>
+                        <mesh-keygen>
+                            <directory>PREFIX/bin</directory>
+                            <option>
+                                <set name="init"/>
+                                <unset name="init-add"/>
+                                <unset name="read"/>
+                                <unset name="time"/>
+                                <unset name="user"/>
+                            </option>
+                        </mesh-keygen>
+                        <mesh-keygen>
+                            <directory>PREFIX/bin</directory>
+                            <option>
+                                <set name="init-add"/>
+                                <unset name="init"/>
+                                <unset name="read"/>
+                                <unset name="time"/>
+                                <unset name="user"/>
+                            </option>
+                        </mesh-keygen>
+                    </commands>
+                </none>
+            </proxies>
+        </default>
+        <admin>
+            <user>
+                <allow>
+                    <!-- put some admin users here -->
+                </allow>
+            </user>
+            <environment>
+                <unset name="MESH_PUBKEY"/>
+            </environment>
+            <proxies>
+                <none>
+                    <commands>
+                        <bash>
+                            <directory>/bin</directory>
+                            <argument>
+                                <count>1</count>
+                            </argument>
+                        </bash>
+                        <scp>
+                            <directory>/usr/bin</directory>
+                        </scp>
+                    </commands>
+                </none>
+            </proxies>
+        </admin>
+        <getkey>
+            <group>
+                <allow>
+                    <MESHGROUP/>
+                </allow>
+            </group>
+            <environment>
+                <set name="MESH_PUBKEY"/>
+            </environment>
+            <proxies>
+                <none>
+                    <commands>
+                        <mesh-getkey>
+                            <directory>PREFIX/sbin</directory>
+                            <argument>
+                                <count>2</count>
+                            </argument>
+                        </mesh-getkey>
+                    </commands>
+                </none>
+            </proxies>
+        </getkey>
+    </policies>
+</mashrc>
+
